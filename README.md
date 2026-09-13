@@ -13,7 +13,7 @@ Every single attrition case in the dataset falls inside that one segment. Depart
 
 ## Dataset
 
-- **Employee_Attrition_Prediction_Dataset_100K.csv** — 100,000 employee records, 40 features
+- **Employee_Attrition_Prediction_Dataset_100K.csv** — 100,000 employee records, 40 features, sourced from [Kaggle](https://www.kaggle.com/)
 - Overall attrition rate: 5.1% (5,085 of 100,000)
 - Covers demographics, compensation, job role, satisfaction scores, overtime status, and tenure
 
@@ -48,6 +48,58 @@ A 3-page report built on DAX measures:
 - **Overview** — KPI cards (total employees, attrition count, overall rate, high-risk segment rate) plus attrition rate by department and a high-risk-vs-rest comparison
 - **Deep Dive** — a department × job role attrition cross-tab, an income-band trend line, and a filterable table of high-risk employees (overtime + low satisfaction) with gender and remote-work slicers
 - **Detail** — an employee-level lookup table filterable by age group, overtime, job role, and department, for drilling into individual records
+
+## Sample Queries & Output
+
+A few of the 12 queries, run against `Sql/attrition.db`:
+
+**Overall headcount and attrition rate**
+```sql
+SELECT COUNT(*) AS headcount, SUM(attrition) AS attritions,
+       ROUND(100.0 * SUM(attrition) / COUNT(*), 2) AS attrition_rate_pct
+FROM employees;
+```
+| headcount | attritions | attrition_rate_pct |
+|-----------|------------|---------------------|
+| 100,000   | 5,085      | 5.08%               |
+
+**Attrition rate by department, ranked**
+```sql
+SELECT d.department_name, COUNT(*) AS headcount, SUM(e.attrition) AS attritions,
+       ROUND(100.0 * SUM(e.attrition) / COUNT(*), 2) AS attrition_rate_pct,
+       RANK() OVER (ORDER BY 1.0 * SUM(e.attrition) / COUNT(*) DESC) AS attrition_rank
+FROM employees e
+JOIN dim_department d ON d.department_id = e.department_id
+GROUP BY d.department_name
+ORDER BY attrition_rate_pct DESC;
+```
+| department  | headcount | attritions | attrition_rate_pct | rank |
+|-------------|-----------|------------|---------------------|------|
+| Finance     | 16,688    | 891        | 5.34%               | 1    |
+| HR          | 16,653    | 863        | 5.18%               | 2    |
+| Operations  | 16,524    | 856        | 5.18%               | 3    |
+| Sales       | 16,897    | 846        | 5.01%               | 4    |
+| IT          | 16,677    | 822        | 4.93%               | 5    |
+| Marketing   | 16,561    | 807        | 4.87%               | 6    |
+
+**The high-risk segment: overtime × job satisfaction**
+```sql
+SELECT overtime,
+       CASE WHEN job_satisfaction <= 2 THEN 'Low (1-2)' ELSE 'OK (3-5)' END AS satisfaction_bucket,
+       COUNT(*) AS headcount, SUM(attrition) AS attritions,
+       ROUND(100.0 * SUM(attrition) / COUNT(*), 2) AS attrition_rate_pct
+FROM employees
+GROUP BY overtime, satisfaction_bucket
+ORDER BY attrition_rate_pct DESC;
+```
+| overtime | satisfaction  | headcount | attritions | attrition_rate_pct |
+|----------|---------------|-----------|------------|---------------------|
+| Yes      | Low (1-2)     | 20,109    | 5,085      | **25.29%**          |
+| No       | Low (1-2)     | 20,042    | 0          | 0.0%                |
+| No       | OK (3-5)      | 29,838    | 0          | 0.0%                |
+| Yes      | OK (3-5)      | 30,011    | 0          | 0.0%                |
+
+This last table is the whole story: every attrition case in the dataset sits in exactly one of the four buckets above.
 
 ## Screenshots
 
